@@ -50,7 +50,7 @@ jobs:
 
       - name: 4. Keep Server Alive (48 Hours)
         run: |
-          for ($i = 1; $i -le 2880; $i++) {
+          for ($i = 1; $i -le 3480; $i++) {
             Start-Sleep -Seconds 60
-            Write-Host "[$i/2880] Server running..."
+            Write-Host "[$i/3480] Server running..."
           }
