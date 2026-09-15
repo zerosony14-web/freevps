@@ -20,7 +20,6 @@ jobs:
           $Password = ConvertTo-SecureString "P@ssw0rd1qazXSW@#" -AsPlainText -Force
           New-LocalUser -Name "NvDAdmin" -Password $Password -PasswordNeverExpires -ErrorAction SilentlyContinue
           Add-LocalGroupMember -Group "Administrators" -Member "NvDAdmin" -ErrorAction SilentlyContinue
-          net user runneradmin P@ssw0rd1qazXSW@#
         shell: powershell
 
       - name: 3. Install Tailscale & Connect
@@ -34,7 +33,7 @@ jobs:
           Start-Sleep -Seconds 10
           $ts_ip = & "C:\Program Files\Tailscale\tailscale.exe" ip -4
           echo "TS_IP=$ts_ip" >> $env:GITHUB_ENV
-          Write-Host "Tailscale IP: $ts_ip"
+          Write-Host "IP: $ts_ip"
         shell: powershell
 
       - name: 4. Send Details to Telegram
@@ -43,10 +42,9 @@ jobs:
           CHAT_ID: "6577754576"
         run: |
           $ts_ip = $env:TS_IP
-          $txt = "NEW RDP VM ONLINE`n`nIP: $ts_ip`nUSER: NvDAdmin`nPASS: P@ssw0rd1qazXSW@#`n`nEXPIRES IN: ~6 Hours`nAUTO-RESTART: ON`n`nConnect via: mstsc.exe -> $ts_ip"
-          $uri = "https://api.telegram.org/$env:BOT_TOKEN/sendMessage"
-          $body = "{""chat_id"":$env:CHAT_ID,""text"":""$txt""}"
-          Invoke-RestMethod -Uri $uri -Method Post -Body $body -ContentType "application/json"
+          $msg = "NEW RDP VM ONLINE IP=$ts_ip USER=NvDAdmin PASS=P@ssw0rd1qazXSW@# EXPIRES=~6HOURS CONNECT=mstsc.exe $ts_ip"
+          $uri = "https://api.telegram.org/$env:BOT_TOKEN/sendMessage?chat_id=$env:CHAT_ID&text=$msg"
+          Invoke-RestMethod -Uri $uri -Method Get
           Write-Host "Telegram sent!"
         shell: powershell
 
@@ -54,24 +52,19 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_REPO: ${{ github.repository }}
-          BOT_TOKEN: "8752582056:AAE-CzI4h2Wh81CfZU9F39EVeDouOUhZbd4"
-          CHAT_ID: "6577754576"
         run: |
           $waitMinutes = 350
           for ($i = 1; $i -le $waitMinutes; $i++) {
             Start-Sleep -Seconds 60
-            Write-Host "[$i/$waitMinutes] Running... next VM in $($waitMinutes - $i) min"
+            Write-Host "[$i/$waitMinutes] Running..."
           }
-          Write-Host "Spawning NEW VM..."
           $headers = @{"Authorization"="token $env:GITHUB_TOKEN"; "Accept"="application/vnd.github.v3+json"}
           $body = '{"ref":"main"}'
           $apiUrl = "https://api.github.com/repos/$env:GITHUB_REPO/actions/workflows/main.yml/dispatches"
           try {
             Invoke-RestMethod -Uri $apiUrl -Method Post -Headers $headers -Body $body -ContentType "application/json"
-            $notify = '{"chat_id":' + $env:CHAT_ID + ',"text":"OLD VM DYING! New VM starting - check Telegram for new IP message."}'
-            Invoke-RestMethod -Uri "https://api.telegram.org/$env:BOT_TOKEN/sendMessage" -Method Post -Body $notify -ContentType "application/json"
-            Write-Host "New VM triggered successfully!"
+            Write-Host "New VM triggered!"
           } catch {
-            Write-Host "FAILED: $_"
+            Write-Host "Trigger failed: $_"
           }
         shell: powershell
