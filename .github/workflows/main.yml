@@ -29,11 +29,12 @@ jobs:
         run: |
           Invoke-WebRequest "https://pkgs.tailscale.com/stable/tailscale-setup-latest-amd64.msi" -OutFile "C:\tailscale.msi"
           Start-Process msiexec -ArgumentList "/i C:\tailscale.msi /quiet /norestart" -Wait
-          Start-Sleep -Seconds 5
-          & "C:\Program Files\Tailscale\tailscale.exe" up --authkey="$env:TAILSCALE_AUTHKEY" --hostname="github-rdp-server" --force-reconnect
           Start-Sleep -Seconds 8
+          & "C:\Program Files\Tailscale\tailscale.exe" up --authkey="$env:TAILSCALE_AUTHKEY" --hostname="github-rdp-server" --reset
+          Start-Sleep -Seconds 10
           $ts_ip = & "C:\Program Files\Tailscale\tailscale.exe" ip -4
           echo "TS_IP=$ts_ip" >> $env:GITHUB_ENV
+          Write-Host "Tailscale IP: $ts_ip"
         shell: powershell
 
       - name: 4. Send Details to Telegram
