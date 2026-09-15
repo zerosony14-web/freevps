@@ -43,11 +43,11 @@ jobs:
           CHAT_ID: "6577754576"
         run: |
           $ts_ip = $env:TS_IP
-          $txt = "🚀 NEW RDP VM ONLINE!`n`n🖥️ IP: $ts_ip`n👤 USER: NvDAdmin`n🔑 PASS: P@ssw0rd1qazXSW@#`n`n⏰ EXPIRES IN: ~6 Hours`n🔄 AUTO-RESTART: ON`n`nConnect via: mstsc.exe -> $ts_ip"
+          $txt = "NEW RDP VM ONLINE`n`nIP: $ts_ip`nUSER: NvDAdmin`nPASS: P@ssw0rd1qazXSW@#`n`nEXPIRES IN: ~6 Hours`nAUTO-RESTART: ON`n`nConnect via: mstsc.exe -> $ts_ip"
           $uri = "https://api.telegram.org/$env:BOT_TOKEN/sendMessage"
-          $body = @{chat_id=$env:CHAT_ID; text=$txt; parse_mode="Markdown"} | ConvertTo-Json
+          $body = "{""chat_id"":$env:CHAT_ID,""text"":""$txt""}"
           Invoke-RestMethod -Uri $uri -Method Post -Body $body -ContentType "application/json"
-          Write-Host "✅ Telegram sent!"
+          Write-Host "Telegram sent!"
         shell: powershell
 
       - name: 5. Wait & Auto-Restart
@@ -62,16 +62,16 @@ jobs:
             Start-Sleep -Seconds 60
             Write-Host "[$i/$waitMinutes] Running... next VM in $($waitMinutes - $i) min"
           }
-          Write-Host "🚀 Spawning NEW VM..."
+          Write-Host "Spawning NEW VM..."
           $headers = @{"Authorization"="token $env:GITHUB_TOKEN"; "Accept"="application/vnd.github.v3+json"}
-          $body = @{ref="main"} | ConvertTo-Json
+          $body = '{"ref":"main"}'
           $apiUrl = "https://api.github.com/repos/$env:GITHUB_REPO/actions/workflows/main.yml/dispatches"
           try {
             Invoke-RestMethod -Uri $apiUrl -Method Post -Headers $headers -Body $body -ContentType "application/json"
-            $notify = @{chat_id=$env:CHAT_ID; text="⚠️ OLD VM DYING! New VM starting — check Telegram for new IP message."} | ConvertTo-Json
+            $notify = '{"chat_id":' + $env:CHAT_ID + ',"text":"OLD VM DYING! New VM starting - check Telegram for new IP message."}'
             Invoke-RestMethod -Uri "https://api.telegram.org/$env:BOT_TOKEN/sendMessage" -Method Post -Body $notify -ContentType "application/json"
-            Write-Host "✅ New VM triggered successfully!"
+            Write-Host "New VM triggered successfully!"
           } catch {
-            Write-Host "❌ FAILED: $_"
+            Write-Host "FAILED: $_"
           }
         shell: powershell
