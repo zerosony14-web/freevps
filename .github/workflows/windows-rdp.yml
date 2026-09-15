@@ -1,5 +1,4 @@
 name: Windows Cloud RDP
-
 on:
   workflow_dispatch:
 
@@ -9,7 +8,7 @@ jobs:
     timeout-minutes: 360
 
     steps:
-      - name: 1. Enable Remote Desktop & Firewall
+      - name: 1. Enable RDP & Firewall
         run: |
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -name "fDenyTSConnections" -Value 0
           Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
@@ -22,35 +21,97 @@ jobs:
           Add-LocalGroupMember -Group "Administrators" -Member "NvDAdmin" -ErrorAction SilentlyContinue
           net user runneradmin P@ssw0rd1qazXSW@#
 
-      - name: 3. Install & Connect Tailscale VPN
+      - name: 3. Install Tailscale & Connect
         env:
           TAILSCALE_AUTHKEY: ${{ secrets.TAILSCALE_AUTHKEY }}
         run: |
-          # Download and install Tailscale silently
+          # Download & Install Tailscale
           Invoke-WebRequest "https://pkgs.tailscale.com/stable/tailscale-setup-latest-amd64.msi" -OutFile "C:\tailscale.msi"
           Start-Process msiexec -ArgumentList "/i C:\tailscale.msi /quiet /norestart" -Wait
-          
-          # Connect to Tailscale network
-          Start-Sleep -Seconds 5
-          & "C:\Program Files\Tailscale\tailscale.exe" up --authkey="$Env:TAILSCALE_AUTHKEY" --hostname="github-rdp-server"
-          
-          Start-Sleep -Seconds 8
-          
-          # Get Tailscale IP
-          $ts_ip = & "C:\Program Files\Tailscale\tailscale.exe" ip -4
-          
-          Write-Host ""
-          Write-Host "==================================================" -ForegroundColor Green
-          Write-Host "  >>> RDP SERVER IS READY! <<<" -ForegroundColor Cyan
-          Write-Host "  Tailscale IP : $ts_ip" -ForegroundColor Yellow
-          Write-Host "  Username     : NvdAdmin" -ForegroundColor Yellow
-          Write-Host "  Password     : P@ssw0rd1qazXSW@#" -ForegroundColor Yellow
-          Write-Host "  >> Open mstsc and connect to: $ts_ip" -ForegroundColor Magenta
-          Write-Host "==================================================" -ForegroundColor Green
 
-      - name: 4. Keep Server Alive (48 Hours)
+          Start-Sleep -Seconds 5
+
+          # Connect Tailscale
+          & "C:\Program Files\Tailscale\tailscale.exe" up --authkey="$Env:TAILSCALE_AUTHKEY" --hostname="github-rdp-server" --force-reconnect
+
+          Start-Sleep -Seconds 8
+
+          # Get IP
+          $ts_ip = & "C:\Program Files\Tailscale\tailscale.exe" ip -4
+          echo "TS_IP=$ts_ip" >> $env:GITHUB_ENV
+
+      - name: 4. SEND DETAILS TO TELEGRAM 📩
+        env:
+          BOT_TOKEN: "8752582056:AAE-CzI4h2Wh81CfZU9F39EVeDouOUhZbd4"
+          CHAT_ID: "6577754576"
         run: |
-          for ($i = 1; $i -le 3480; $i++) {
+          $ts_ip = $env:TS_IP
+          $message = @"
+🚀 NEW RDP VM ONLINE!
+
+🖥️ IP: $ts_ip
+👤 USER: NvDAdmin
+🔑 PASS: P@ssw0rd1qazXSW@#
+
+⏰ EXPIRES IN: ~6 Hours
+🔄 AUTO-RESTART: ON
+
+Connect via: mstsc.exe → $ts_ip
+"@
+
+          $body = @{
+            chat_id = $env:CHAT_ID
+            text = $message
+            parse_mode = "Markdown"
+          } | ConvertTo-Json
+
+          Invoke-RestMethod -Uri "https://api.telegram.org/$($env:BOT_TOKEN)/sendMessage" `
+            -Method POST `
+            -Body $body `
+            -ContentType "application/json"
+
+          Write-Host "✅ SENT TO TELEGRAM!" -ForegroundColor Green
+
+      - name: 5. WAIT & AUTO-SPAWN NEW VM 🔄
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPO: ${{ github.repository }}
+          BOT_TOKEN: "8752582056:AAE-CzI4h2Wh81CfZU9F39EVeDouOUhZbd4"
+          CHAT_ID: "6577754576"
+        run: |
+          # WAIT 5h 50m → then trigger NEW VM before death
+          $waitMinutes = 350
+          for ($i = 1; $i -le $waitMinutes; $i++) {
             Start-Sleep -Seconds 60
-            Write-Host "[$i/3480] Server running..."
+            Write-Host "[$i/$waitMinutes] Alive — new VM in $($waitMinutes - $i) min"
+          }
+
+          Write-Host "🚀 TRIGGERING NEW RDP INSTANCE..." -ForegroundColor Cyan
+
+          # TRIGGER NEW VM
+          $headers = @{
+            "Authorization" = "token $Env:GITHUB_TOKEN"
+            "Accept" = "application/vnd.github.v3+json"
+          }
+
+          $body = @{ ref = "main" } | ConvertTo-Json
+
+          $apiUrl = "https://api.github.com/repos/$Env:GITHUB_REPO/actions/workflows/windows-rdp.yml/dispatches"
+
+          try {
+            Invoke-RestMethod -Uri $apiUrl -Method POST -Headers $headers -Body $body -ContentType "application/json"
+            
+            # SEND NOTIFICATION THAT OLD VM IS DYING
+            $notify = @{
+              chat_id = $env:CHAT_ID
+              text = "⚠️ OLD VM DYING. NEW VM SPUN UP — CHECK TELEGRAM FOR NEW IP MESSAGE."
+            } | ConvertTo-Json
+            
+            Invoke-RestMethod -Uri "https://api.telegram.org/$($env:BOT_TOKEN)/sendMessage" `
+              -Method POST -Body $notify -ContentType "application/json"
+
+            Write-Host "✅ NEW VM SPAWNED SUCCESSFULLY!" -ForegroundColor Green
+          }
+          catch {
+            Write-Host "❌ FAILED: $_" -ForegroundColor Red
           }
